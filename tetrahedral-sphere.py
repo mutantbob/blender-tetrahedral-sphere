@@ -190,7 +190,7 @@ class TetrahedralSphere(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
     bl_region_type='UI'
 
-    len1 = bpy.props.FloatProperty(name="Anchor Edge Length", default=1, min=0, max=2.0,
+    len1 = bpy.props.FloatProperty(name="Anchor Edge Length", default=1, min=0.001, max=1.999,
                                       subtype='FACTOR', precision=4, step=100,
                                       description="length of the anchor edge (the edge perpendicular to the poles")
     u_res = bpy.props.IntProperty(name="U resolution", default=12, min=1,
