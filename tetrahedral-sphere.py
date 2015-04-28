@@ -25,16 +25,12 @@ class VertexAccumulator:
         self.verts_ = []
         self.vertIdxs = {}
 
-    def keyFor(v):
-        return "%f,%f,%f"%(v[0], v[1], v[2])
-
     def idxFor(self, v):
-        key = VertexAccumulator.keyFor(v)
-        rval = self.vertIdxs.get(key)
-        if None==rval:
-            rval = len(self.verts_)
-            self.vertIdxs[key] = rval
-            self.verts_.append(v)
+        for i in range(len(self.verts_)):
+            if (Vector(self.verts_[i])-Vector(v)).magnitude < 0.0001:
+                return i
+        rval = len(self.verts_)
+        self.verts_.append(v)
         return rval
 
     def verts(self):
