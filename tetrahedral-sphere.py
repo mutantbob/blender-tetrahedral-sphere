@@ -80,10 +80,45 @@ class TetrahedralSphereArbitrary:
         return (vb - va) * (f1) + (vc - va) * (f2) + va
 
     @classmethod
+    def artillery(cls, circle_j, v1, u_res, u, v):
+        if u + v > 0:
+            v2 = circle_j.point_for(u / (u + v))
+            circle_k = GreatCircleArc(v1, v2)
+            return circle_k.point_for((u + v) / u_res)
+        else:
+            return v1
+
+
+    @classmethod
     def build_face(cls, accum, faces, u_res, va, vb, vc):
 
-        circle_k = GreatCircleArc(va, vb)
-        circle_m = GreatCircleArc(vc, vb)
+        # this strategy is not always pretty for arbitrary spherical triangles,
+        # but for the ones we are constructing this decomposition is the least atrocious.
+
+        circle_j = GreatCircleArc(va, vb)
+
+        for u in range(u_res):
+
+            v_res2 = u_res-u
+            for v in range(v_res2):
+
+                v1 = vc
+                v5 = cls.artillery(circle_j, v1, u_res, u, v)
+                v6 = cls.artillery(circle_j, v1, u_res, u+1, v)
+                v8 = cls.artillery(circle_j, v1, u_res, u, v+1)
+
+                faces.append([accum.idxFor(v) for v in [v5, v6, v8]])
+                if (v < v_res2-1):
+                    v7 = cls.artillery(circle_j, v1, u_res, u+1, v+1)
+                    faces.append([accum.idxFor(v) for v in [v6, v7, v8]])
+
+
+
+    @classmethod
+    def build_face_GC(cls, accum, faces, u_res, va, vb, vc):
+
+        circle_k = GreatCircleArc(va, vc)
+        circle_m = GreatCircleArc(vb, vc)
         circle1 = GreatCircleArc(circle_k.point_for(0), circle_m.point_for(0))
         #print("%r \n%r\n%r"%(circle_k.point_for(1), circle_m.point_for(1), vc))
         for u in range(u_res):
@@ -129,13 +164,10 @@ class TetrahedralSphereArbitrary:
             accum.idxFor(v3)
             accum.idxFor(v4)
 
-        va = v2
-        vb = v1
-        vc = v3
-        cls.build_face(accum, faces, u_res, va, vb, vc)
+        cls.build_face(accum, faces, u_res, v2, v1, v3)
         cls.build_face(accum, faces, u_res, v1, v2, v4)
-        #cls.build_face(accum, faces, u_res, v1, v4, v3)
-        #cls.build_face(accum, faces, u_res, v2, v3, v4)
+        cls.build_face(accum, faces, u_res, v4, v3, v1)
+        cls.build_face(accum, faces, u_res, v3, v4, v2)
 
         mesh = bpy.data.meshes.new(name)
         mesh.from_pydata(accum.verts(), [], faces)
