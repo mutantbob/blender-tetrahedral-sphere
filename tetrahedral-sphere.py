@@ -178,6 +178,7 @@ class TetrahedralSphereArbitrary:
         mesh = cls.make_mesh(name, len1, u_res)
         obj = bpy.data.objects.new(name, mesh)
         scn.objects.link(obj)
+        obj.location = scn.cursor_location
         return obj
 
 #
