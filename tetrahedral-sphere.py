@@ -38,18 +38,27 @@ class VertexAccumulator:
 
 #
 
+def invent_coordinate_system(a, b):
+    a = a.normalized()
+    b = b.normalized()
+
+    c = a.cross(b)
+    if (c.magnitude>0):
+        c = c.normalized()
+    else:
+        c = Vector( [0,1,0] )
+    b2 = c.cross(a)
+
+    return [a,b2,c]
+
+
 class GreatCircleArc:
     def __init__(self, p1, p2):
-        self.p1 = p1.normalized()
-        self.p2 = p2.normalized()
+        p2 = p2.normalized()
 
-        normal_ = self.p1.cross(self.p2)
-        if (normal_.magnitude>0):
-            self.normal = normal_.normalized()
-        else:
-            self.normal = Vector([0,0,1])
-        self.axis2 = self.normal.cross(self.p1)
-        self.cos_theta = self.p1.dot(self.p2)
+        self.p1, self.axis2, self.normal = invent_coordinate_system(p1, p2)
+
+        self.cos_theta = self.p1.dot(p2)
         if (self.cos_theta>=1):
             self.theta = 0
         elif (self.cos_theta<=-1):
