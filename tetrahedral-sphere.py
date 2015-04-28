@@ -42,6 +42,37 @@ class VertexAccumulator:
 
 #
 
+class GreatCircleArc:
+    def __init__(self, p1, p2):
+        self.p1 = p1.normalized()
+        self.p2 = p2.normalized()
+
+        normal_ = self.p1.cross(self.p2)
+        if (normal_.magnitude>0):
+            self.normal = normal_.normalized()
+        else:
+            self.normal = Vector([0,0,1])
+        self.axis2 = self.normal.cross(self.p1)
+        self.cos_theta = self.p1.dot(self.p2)
+        if (self.cos_theta>=1):
+            self.theta = 0
+        elif (self.cos_theta<=-1):
+            self.theta = pi
+        else:
+            self.theta = acos(self.cos_theta)
+        #print("%f\t%r,%r,%r"%(self.theta, self.p1, self.axis2, self.normal))
+
+    def point_for(self, t):
+        """
+        :param t: in the range[0..1] .  0 corresponds to p1.  1 corresponds to p2
+        :return:
+        """
+        theta_2 = t * self.theta
+        return self.p1 * cos(theta_2) + self.axis2 * sin(theta_2)
+
+
+#
+
 class TetrahedralSphereArbitrary:
 
     @classmethod
@@ -50,21 +81,34 @@ class TetrahedralSphereArbitrary:
 
     @classmethod
     def build_face(cls, accum, faces, u_res, va, vb, vc):
+
+        circle_k = GreatCircleArc(va, vb)
+        circle_m = GreatCircleArc(vc, vb)
+        circle1 = GreatCircleArc(circle_k.point_for(0), circle_m.point_for(0))
+        #print("%r \n%r\n%r"%(circle_k.point_for(1), circle_m.point_for(1), vc))
         for u in range(u_res):
 
-            for v in range(u_res - u):
+            circle2 = GreatCircleArc(circle_k.point_for((u+1)/u_res), circle_m.point_for((u+1)/u_res))
 
-                f1 = u / u_res
-                f2 = v / u_res
-                v5 = cls.triangle_interp(va, f1, vb, f2, vc).normalized()
-                v6 = cls.triangle_interp(va, (u + 1) / u_res, vb, v / u_res, vc).normalized()
-                v7 = cls.triangle_interp(va, (u + 1) / u_res, vb, (v + 1) / u_res, vc).normalized()
-                v8 = cls.triangle_interp(va, f1, vb, (v + 1) / u_res, vc).normalized()
-                print([v5, v6, v7])
+            v_res2 = u_res-u
+            for v in range(v_res2):
+
+                v5 = circle1.point_for(v/v_res2)
+                if v_res2>1:
+                    f2 = v / (v_res2 - 1)
+                else:
+                    f2 = 0
+                v6 = circle2.point_for(f2)
+                v8 = circle1.point_for((v+1)/v_res2)
+
+                #print([v5, v6, v8])
 
                 faces.append([accum.idxFor(v) for v in [v5, v6, v8]])
-                if (v + 1 < u_res - u):
+                if (v < v_res2-1):
+                    v7 = circle2.point_for((v+1)/(v_res2-1))
                     faces.append([accum.idxFor(v) for v in [v6, v7, v8]])
+
+            circle1 = circle2
 
     @classmethod
     def make_mesh(cls, name, len1, u_res):
@@ -78,6 +122,12 @@ class TetrahedralSphereArbitrary:
         v2 = Vector([-len1, 0, len2])
         v3 = Vector([0, len1, -len2])
         v4 = Vector([0, -len1, -len2])
+
+        if True:
+            accum.idxFor(v1)
+            accum.idxFor(v2)
+            accum.idxFor(v3)
+            accum.idxFor(v4)
 
         va = v2
         vb = v1
@@ -95,7 +145,7 @@ class TetrahedralSphereArbitrary:
         return mesh
 
     @classmethod
-    def letterbox_arbitrary_op(cls, scn, len1, u_res):
+    def tet_sphere_arbitrary_op(cls, scn, len1, u_res):
         name = "tetrahedral sphere"
         mesh = cls.make_mesh(name, len1, u_res)
         obj = bpy.data.objects.new(name, mesh)
@@ -119,16 +169,22 @@ class TetrahedralSphere(bpy.types.Operator):
 
     def execute(self, ctx):
         try:
-            obj = TetrahedralSphereArbitrary.letterbox_arbitrary_op(ctx.scene, self.len1/2.0, self.u_res)
+            obj = TetrahedralSphereArbitrary.tet_sphere_arbitrary_op(ctx.scene, self.len1/2.0, self.u_res)
             obj.select = True
             ctx.scene.objects.active = obj
             return {'FINISHED'}
         except ValueError as e:
+#            print(traceback.format_exc())
             self.report({'ERROR'}, e.args[0])
             return {'CANCELLED'}
         except AttributeError as e:
+#            print(traceback.format_exc())
             self.report({'ERROR'}, e.args[0])
             return {'CANCELLED'}
+#        except Exception as e:
+#            print(traceback.format_exc())
+#            self.report({'ERROR'}, e.args[0])
+#            return {'CANCELLED'}
 
 #
 #
