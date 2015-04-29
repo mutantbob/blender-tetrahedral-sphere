@@ -76,7 +76,191 @@ class GreatCircleArc:
         return self.p1 * cos(theta_2) + self.axis2 * sin(theta_2)
 
 
+class LesserCircle:
+    """
+    this defines the subset of the sphere whose points satisfy v.dot(normal) == offset
+    """
+    def __init__(self, normal, offset):
+        self.normal = normal.normalized()
+        self.offset = offset
+
+
+    def intersect(self, lc2):
+
+        c = self.normal.cross(lc2.normal) .normalized()
+
+        # these if statements only work because c is normalized
+        if (abs(c[2])>0.1):
+            x,y = self.solve(self.normal[0], self.normal[1], self.offset,
+            lc2.normal[0], lc2.normal[1], lc2.offset)
+            xyz = Vector( [x,y,0] )
+        elif (abs(c[0])>0.1):
+            z,y = self.solve(self.normal[2], self.normal[1], self.offset,
+            lc2.normal[2], lc2.normal[1], lc2.offset)
+            xyz = Vector( [0,y,z] )
+        else:
+            x,z = self.solve(self.normal[0], self.normal[2], self.offset,
+            lc2.normal[0], lc2.normal[2], lc2.offset)
+            xyz = Vector( [x,0,z] )
+
+        #print( [ xyz.dot(self.normal), self.offset ])
+        #print( [ xyz.dot(lc2.normal), lc2.offset ])
+
+        d0 = c .dot(xyz)
+
+        v1 = xyz - d0*c
+
+        #print("%r = %r + %f*%r"%(xyz, v1, d0, c))
+
+        b = sqrt(max( 0, 1-v1.dot(v1)))
+
+        v2 = v1 + b*c
+        v3 = v1 - b*c
+
+        #print("%r and %r" % (v2, v3))
+
+        return (v2, v3)
+
+    def solve(self, a, b, d, e, f, h):
+        det = a*f - e*b
+        if (det==0):
+            print([a,b,d,e,f,h])
+        x = (d*f - h*b) / det
+        y = (a*h - e*d) / det
+
+        return [ x, y ]
+
+class LesserCircleArc:
+    def __init__(self, normal, p1, p2):
+        normal = normal.normalized()
+        #p2 = p2.normalized
+
+        self.normal, self.axis1, self.axis2 = invent_coordinate_system(normal, p1)
+
+        self.offset = p1.dot(normal)
+        if False:
+            o2 = p2.dot(normal)
+            print(" %f = %f-%f"%(o2-self.offset, o2, self.offset))
+        self.r = sqrt(1-self.offset*self.offset)
+
+        self.center = self.offset*self.normal
+
+        p2b = (p2 - self.center)
+        #print(p2b.dot(self.normal))
+        cos_theta = p2b.normalized() .dot( self.axis1)
+        self.theta = acos(cos_theta)
+
+    def interpolate(self, t):
+        theta2 = t*self.theta
+        return self.r * ( self.axis1 * cos(theta2) + self.axis2 * sin(theta2) ) + self.center
+
 #
+
+
+def closer_point(v_master, alternatives):
+    d=None
+    rval = None
+    for v in alternatives:
+        d2 = (v-v_master).magnitude
+        if d is None or d2<d:
+            d = d2
+            rval = v
+    return rval
+
+def lattitudish_corner(accum, faces, va, vb, vc, border_res, border_dz):
+    if border_res<1:
+        return
+    n1 = va.cross(vb)
+    n2 = vc.cross(va)
+    lc_y1 = LesserCircle(n1, 0)
+    for v in range(border_res):
+        lc_y2 = LesserCircle(n1, (v+1)/border_res *border_dz)
+
+        lc_x1 = LesserCircle(n2, 0)
+        for u in range(border_res):
+            lc_x2 = LesserCircle(n2, (u+1)/border_res *border_dz)
+
+            v1 = closer_point(va, lc_y1.intersect(lc_x1))
+            v2 = closer_point(va, lc_y1.intersect(lc_x2))
+            v3 = closer_point(va, lc_y2.intersect(lc_x2))
+            v4 = closer_point(va, lc_y2.intersect(lc_x1))
+
+            faces.append( [ accum.idxFor(v) for v in [v1, v2, v3, v4]])
+
+            lc_x1 = lc_x2
+        lc_y1 = lc_y2
+
+    return closer_point(va, lc_y1.intersect(lc_x1))
+
+
+def lattitudish_edge(accum, faces, va, vb, vc, va_2, vb_2, vc_2, u_res, border_res, border_dz):
+
+    n1 = vb.cross(vc)
+    lc_y1 = LesserCircle(n1, 0)
+
+    n_ab = va.cross(vb).normalized()
+    n_ac = va.cross(vc).normalized()
+    r_interp = GreatCircleArc(n_ab, n_ac)
+
+    lca_bc = LesserCircleArc(n1, vb_2, vc_2)
+
+    for v in range(border_res):
+        lc_y2 = LesserCircle(n1, (v+1)/border_res *border_dz)
+
+        n2 = r_interp.point_for(0)
+        lc_x1 = LesserCircle(n2, vb_2.dot(n2))
+
+        for u in range(u_res):
+            vbct = lca_bc.interpolate(  (u+1)/u_res )
+            n2 = r_interp.point_for( (u+1)/u_res)
+            if False and (u+1==u_res):
+                print("%f  ;  %r =? %r" % ((n2-n_ac).magnitude, n2, n_ac))
+                print("%f  ;  %r =? %r" % ((vbct-vc_2).magnitude, vbct, vc_2))
+            lc_x2 = LesserCircle(n2, vbct.dot(n2))
+
+            v1 = closer_point(vbct, lc_y1.intersect(lc_x1))
+            v2 = closer_point(vbct, lc_y1.intersect(lc_x2))
+            v3 = closer_point(vbct, lc_y2.intersect(lc_x2))
+            v4 = closer_point(vbct, lc_y2.intersect(lc_x1))
+
+            faces.append( [ accum.idxFor(v) for v in [v1, v2, v3, v4]])
+
+            lc_x1 = lc_x2
+        lc_y1 = lc_y2
+
+
+def inset_panel(accum, faces, va, vb, vc, va_2, vb_2, vc_2, u_res, border_dz):
+
+    indices = []
+
+    lca_bc = LesserCircleArc(vb.cross(vc), vb_2, vc_2)
+
+    normal_interp = GreatCircleArc(va.cross(vb), va.cross(vc))
+
+    for v in range(u_res+1):
+        row = []
+        indices.append(row)
+        for u in range(u_res-v+1):
+            if u+v>0:
+                f = v / (u + v)
+                v5 = lca_bc.interpolate(f)
+                lca_a5 = LesserCircleArc(-normal_interp.point_for(f), v5, va_2)
+                vert = lca_a5.interpolate(1 - (u+v)/u_res)
+            else:
+                vert = va_2
+            idx = accum.idxFor(vert)
+            row.append(idx)
+
+    for v in range(u_res):
+        for u in range(u_res-v):
+            i1 = indices[v][u]
+            i2 = indices[v][u+1]
+            i4 = indices[v+1][u]
+
+            faces.append([i1, i2, i4])
+            if (u+v+1<u_res):
+                i3 = indices[v+1][u+1]
+                faces.append([ i2, i3, i4])
 
 class TetrahedralSphereArbitrary:
 
@@ -95,10 +279,28 @@ class TetrahedralSphereArbitrary:
 
 
     @classmethod
-    def build_face(cls, accum, faces, u_res, va, vb, vc):
+    def build_face(cls, accum, faces, u_res, va, vb, vc, border_res, border_dz):
+
+        va_2 = lattitudish_corner(accum, faces, va, vb, vc, border_res, border_dz)
+        vb_2 = lattitudish_corner(accum, faces, vb, vc, va, border_res, border_dz)
+        vc_2 = lattitudish_corner(accum, faces, vc, va, vb, border_res, border_dz)
+
+        n_ab = va.cross(vb).normalized()
+        n_bc = vb.cross(vc).normalized()
+        n_ca = vc.cross(va).normalized()
+
+        lattitudish_edge(accum, faces, va, vb, vc, va_2, vb_2, vc_2, u_res, border_res, border_dz)
+        lattitudish_edge(accum, faces, vb, vc, va, vb_2, vc_2, va_2, u_res, border_res, border_dz)
+        lattitudish_edge(accum, faces, vc, va, vb, vc_2, va_2, vb_2, u_res, border_res, border_dz)
+
+        inset_panel(accum, faces, vc, va, vb, vc_2, va_2, vb_2, u_res, border_dz)
+
+    @classmethod
+    def build_face_TS(cls, accum, faces, u_res, va, vb, vc):
+        # Triangular Sweep
 
         # this strategy is not always pretty for arbitrary spherical triangles,
-        # but for the ones we are constructing this decomposition is the least atrocious.
+        # but for the ones we are constructing (isocelese) this decomposition is the least atrocious.
 
         circle_j = GreatCircleArc(va, vb)
 
@@ -151,7 +353,7 @@ class TetrahedralSphereArbitrary:
             circle1 = circle2
 
     @classmethod
-    def make_mesh(cls, name, len1, u_res):
+    def make_mesh(cls, name, len1, u_res, border_res, border_dz):
 
         accum = VertexAccumulator()
         faces=[]
@@ -169,22 +371,26 @@ class TetrahedralSphereArbitrary:
             accum.idxFor(v3)
             accum.idxFor(v4)
 
-        cls.build_face(accum, faces, u_res, v2, v1, v3)
-        cls.build_face(accum, faces, u_res, v1, v2, v4)
-        cls.build_face(accum, faces, u_res, v4, v3, v1)
-        cls.build_face(accum, faces, u_res, v3, v4, v2)
+        cls.build_face(accum, faces, u_res, v2, v1, v3, border_res, border_dz)
+        cls.build_face(accum, faces, u_res, v1, v2, v4, border_res, border_dz)
+        cls.build_face(accum, faces, u_res, v4, v3, v1, border_res, border_dz)
+        cls.build_face(accum, faces, u_res, v3, v4, v2, border_res, border_dz)
 
         mesh = bpy.data.meshes.new(name)
         mesh.from_pydata(accum.verts(), [], faces)
 
+        mesh.validate(False)
+
         mesh.show_normal_face = True
+        mesh.materials.append(None)
+        mesh.materials.append(None)
 
         return mesh
 
     @classmethod
-    def tet_sphere_arbitrary_op(cls, scn, len1, u_res):
+    def tet_sphere_arbitrary_op(cls, scn, len1, u_res, border_res, border_dz):
         name = "tetrahedral sphere"
-        mesh = cls.make_mesh(name, len1, u_res)
+        mesh = cls.make_mesh(name, len1, u_res, border_res, border_dz)
         obj = bpy.data.objects.new(name, mesh)
         scn.objects.link(obj)
         obj.location = scn.cursor_location
@@ -202,12 +408,17 @@ class TetrahedralSphere(bpy.types.Operator):
     len1 = bpy.props.FloatProperty(name="Anchor Edge Length", default=1, min=0.001, max=1.999,
                                       subtype='FACTOR', precision=4, step=100,
                                       description="length of the anchor edge (the edge perpendicular to the poles")
-    u_res = bpy.props.IntProperty(name="U resolution", default=12, min=1,
+    u_res = bpy.props.IntProperty(name="inner resolution", default=12, min=1, max=40,
                                       description="number of subdivisions of the edges")
+    border_res = bpy.props.IntProperty(name="border resolution", default=3, min=1,
+                                      description="number of stripes in the border")
+    border_dz = bpy.props.FloatProperty(name="border size", default=0.05, min=0.001, max=0.7,
+                                        precision=4, step=10,
+                                        description="thickness of the edge border strips measured along each local polar axis")
 
     def execute(self, ctx):
         try:
-            obj = TetrahedralSphereArbitrary.tet_sphere_arbitrary_op(ctx.scene, self.len1/2.0, self.u_res)
+            obj = TetrahedralSphereArbitrary.tet_sphere_arbitrary_op(ctx.scene, self.len1/2.0, self.u_res, self.border_res, self.border_dz)
             obj.select = True
             ctx.scene.objects.active = obj
             return {'FINISHED'}
@@ -240,6 +451,47 @@ def unregister():
     bpy.types.VIEW3D_PT_tools_add_mesh_edit.remove(menu_func)
     bpy.utils.unregister_module(__name__)
 
+
+def testing():
+    lc1 = LesserCircle(Vector( [1,1,1] ), 0.1)
+    lc2 = LesserCircle(Vector( [1,2,1] ), 0.2)
+
+    lc1.intersect(lc2)
+
+    lc1 = LesserCircle(Vector( [ 0,1,0]), 0.15)
+    lc1.intersect(lc2)
+
+    lc2 = LesserCircle(Vector( [ 1,0,0]), 0.1)
+    lc1.intersect(lc2)
+
+
+    lc1 = LesserCircle(Vector( [ 0,0,1]), 0.17)
+    lc1.intersect(lc2)
+
+
+    print()
+
+def test3():
+    lc1 = LesserCircle(Vector( [1,0,0] ), 0.1)
+    lc2 = LesserCircle(Vector( [0, 1,0] ), 0.1)
+    lc3 = LesserCircle(Vector( [0,0, 1] ), 0.1)
+
+    va, discard = lc1.intersect(lc2)
+    vb, discard = lc2.intersect(lc3)
+    vc, discard = lc3.intersect(lc1)
+
+    print(va)
+    print(vb)
+    print(vc)
+
+    lca = LesserCircleArc(vb.cross(vc), vb, vc)
+
+    print("%r =? %r" % (vb, lca.interpolate(0)))
+    print("%r =? %r" % (vc, lca.interpolate(1)))
+
+
+def test2():
+    TetrahedralSphereArbitrary.tet_sphere_arbitrary_op(bpy.context.scene, 0.5, 12, 3, 0.1)
 
 if __name__ == "__main__":
     try:
