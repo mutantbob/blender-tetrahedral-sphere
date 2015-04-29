@@ -167,102 +167,11 @@ def closer_point(v_master, alternatives):
             rval = v
     return rval
 
-def lattitudish_corner(accum, faces, va, vb, vc, border_res, border_dz):
-    if border_res<1:
-        return
-    n1 = va.cross(vb)
-    n2 = vc.cross(va)
-    lc_y1 = LesserCircle(n1, 0)
-    for v in range(border_res):
-        lc_y2 = LesserCircle(n1, (v+1)/border_res *border_dz)
-
-        lc_x1 = LesserCircle(n2, 0)
-        for u in range(border_res):
-            lc_x2 = LesserCircle(n2, (u+1)/border_res *border_dz)
-
-            v1 = closer_point(va, lc_y1.intersect(lc_x1))
-            v2 = closer_point(va, lc_y1.intersect(lc_x2))
-            v3 = closer_point(va, lc_y2.intersect(lc_x2))
-            v4 = closer_point(va, lc_y2.intersect(lc_x1))
-
-            faces.append( [ accum.idxFor(v) for v in [v1, v2, v3, v4]])
-
-            lc_x1 = lc_x2
-        lc_y1 = lc_y2
-
-    return closer_point(va, lc_y1.intersect(lc_x1))
-
-
-def lattitudish_edge(accum, faces, va, vb, vc, va_2, vb_2, vc_2, u_res, border_res, border_dz):
-
-    n1 = vb.cross(vc)
-    lc_y1 = LesserCircle(n1, 0)
-
-    n_ab = va.cross(vb).normalized()
-    n_ac = va.cross(vc).normalized()
-    r_interp = GreatCircleArc(n_ab, n_ac)
-
-    lca_bc = LesserCircleArc(n1, vb_2, vc_2)
-
-    for v in range(border_res):
-        lc_y2 = LesserCircle(n1, (v+1)/border_res *border_dz)
-
-        n2 = r_interp.point_for(0)
-        lc_x1 = LesserCircle(n2, vb_2.dot(n2))
-
-        for u in range(u_res):
-            vbct = lca_bc.interpolate(  (u+1)/u_res )
-            n2 = r_interp.point_for( (u+1)/u_res)
-            if False and (u+1==u_res):
-                print("%f  ;  %r =? %r" % ((n2-n_ac).magnitude, n2, n_ac))
-                print("%f  ;  %r =? %r" % ((vbct-vc_2).magnitude, vbct, vc_2))
-            lc_x2 = LesserCircle(n2, vbct.dot(n2))
-
-            v1 = closer_point(vbct, lc_y1.intersect(lc_x1))
-            v2 = closer_point(vbct, lc_y1.intersect(lc_x2))
-            v3 = closer_point(vbct, lc_y2.intersect(lc_x2))
-            v4 = closer_point(vbct, lc_y2.intersect(lc_x1))
-
-            faces.append( [ accum.idxFor(v) for v in [v1, v2, v3, v4]])
-
-            lc_x1 = lc_x2
-        lc_y1 = lc_y2
-
-
-def inset_panel(accum, faces, va, vb, vc, va_2, vb_2, vc_2, u_res, border_dz):
-
-    indices = []
-
-    lca_bc = LesserCircleArc(vb.cross(vc), vb_2, vc_2)
-
-    normal_interp = GreatCircleArc(va.cross(vb), va.cross(vc))
-
-    for v in range(u_res+1):
-        row = []
-        indices.append(row)
-        for u in range(u_res-v+1):
-            if u+v>0:
-                f = v / (u + v)
-                v5 = lca_bc.interpolate(f)
-                lca_a5 = LesserCircleArc(-normal_interp.point_for(f), v5, va_2)
-                vert = lca_a5.interpolate(1 - (u+v)/u_res)
-            else:
-                vert = va_2
-            idx = accum.idxFor(vert)
-            row.append(idx)
-
-    for v in range(u_res):
-        for u in range(u_res-v):
-            i1 = indices[v][u]
-            i2 = indices[v][u+1]
-            i4 = indices[v+1][u]
-
-            faces.append([i1, i2, i4])
-            if (u+v+1<u_res):
-                i3 = indices[v+1][u+1]
-                faces.append([ i2, i3, i4])
-
 class TetrahedralSphereArbitrary:
+
+    faces = []
+    material_indices = []
+    accum = VertexAccumulator()
 
     @classmethod
     def triangle_interp(cls, va, f1, vb, f2, vc):
@@ -277,23 +186,124 @@ class TetrahedralSphereArbitrary:
         else:
             return v1
 
+    def add_face_v(self, mat_index, verts):
+        self.add_face_i(mat_index, [ self.accum.idxFor(v) for v in verts] )
 
-    @classmethod
-    def build_face(cls, accum, faces, u_res, va, vb, vc, border_res, border_dz):
+    def add_face_i(self, mat_index, indices):
+        self.faces.append(indices)
+        self.material_indices.append(mat_index)
 
-        va_2 = lattitudish_corner(accum, faces, va, vb, vc, border_res, border_dz)
-        vb_2 = lattitudish_corner(accum, faces, vb, vc, va, border_res, border_dz)
-        vc_2 = lattitudish_corner(accum, faces, vc, va, vb, border_res, border_dz)
+    def lattitudish_corner(self, va, vb, vc, border_res, border_dz):
+        if border_res<1:
+            return
+        n1 = va.cross(vb)
+        n2 = vc.cross(va)
+        lc_y1 = LesserCircle(n1, 0)
+        for v in range(border_res):
+            lc_y2 = LesserCircle(n1, (v+1)/border_res *border_dz)
+
+            lc_x1 = LesserCircle(n2, 0)
+            for u in range(border_res):
+                lc_x2 = LesserCircle(n2, (u+1)/border_res *border_dz)
+
+                v1 = closer_point(va, lc_y1.intersect(lc_x1))
+                v2 = closer_point(va, lc_y1.intersect(lc_x2))
+                v3 = closer_point(va, lc_y2.intersect(lc_x2))
+                v4 = closer_point(va, lc_y2.intersect(lc_x1))
+
+                self.add_face_v(1, [v1, v2, v3, v4])
+
+                lc_x1 = lc_x2
+            lc_y1 = lc_y2
+
+        return closer_point(va, lc_y1.intersect(lc_x1))
+
+
+    def lattitudish_edge(self, va, vb, vc, va_2, vb_2, vc_2, u_res, border_res, border_dz):
+
+        n1 = vb.cross(vc)
+        lc_y1 = LesserCircle(n1, 0)
+
+        n_ab = va.cross(vb).normalized()
+        n_ac = va.cross(vc).normalized()
+        r_interp = GreatCircleArc(n_ab, n_ac)
+
+        lca_bc = LesserCircleArc(n1, vb_2, vc_2)
+
+        for v in range(border_res):
+            lc_y2 = LesserCircle(n1, (v+1)/border_res *border_dz)
+
+            n2 = r_interp.point_for(0)
+            lc_x1 = LesserCircle(n2, vb_2.dot(n2))
+
+            for u in range(u_res):
+                vbct = lca_bc.interpolate(  (u+1)/u_res )
+                n2 = r_interp.point_for( (u+1)/u_res)
+                if False and (u+1==u_res):
+                    print("%f  ;  %r =? %r" % ((n2-n_ac).magnitude, n2, n_ac))
+                    print("%f  ;  %r =? %r" % ((vbct-vc_2).magnitude, vbct, vc_2))
+                lc_x2 = LesserCircle(n2, vbct.dot(n2))
+
+                v1 = closer_point(vbct, lc_y1.intersect(lc_x1))
+                v2 = closer_point(vbct, lc_y1.intersect(lc_x2))
+                v3 = closer_point(vbct, lc_y2.intersect(lc_x2))
+                v4 = closer_point(vbct, lc_y2.intersect(lc_x1))
+
+                self.add_face_v( 1, [v1, v2, v3, v4] )
+
+                lc_x1 = lc_x2
+            lc_y1 = lc_y2
+
+
+    def inset_panel(self, va, vb, vc, va_2, vb_2, vc_2, u_res, border_dz):
+
+        indices = []
+
+        lca_bc = LesserCircleArc(vb.cross(vc), vb_2, vc_2)
+
+        normal_interp = GreatCircleArc(va.cross(vb), va.cross(vc))
+
+        for v in range(u_res+1):
+            row = []
+            indices.append(row)
+            for u in range(u_res-v+1):
+                if u+v>0:
+                    f = v / (u + v)
+                    v5 = lca_bc.interpolate(f)
+                    lca_a5 = LesserCircleArc(-normal_interp.point_for(f), v5, va_2)
+                    vert = lca_a5.interpolate(1 - (u+v)/u_res)
+                else:
+                    vert = va_2
+                idx = self.accum.idxFor(vert)
+                row.append(idx)
+
+        for v in range(u_res):
+            for u in range(u_res-v):
+                i1 = indices[v][u]
+                i2 = indices[v][u+1]
+                i4 = indices[v+1][u]
+
+                self.add_face_i(0, [i1, i2, i4])
+                if (u+v+1<u_res):
+                    i3 = indices[v+1][u+1]
+                    self.add_face_i(0, [ i2, i3, i4])
+
+
+    def build_face(self, u_res, va, vb, vc, border_res, border_dz):
+
+        va_2 = self.lattitudish_corner(va, vb, vc, border_res, border_dz)
+        vb_2 = self.lattitudish_corner(vb, vc, va, border_res, border_dz)
+        vc_2 = self.lattitudish_corner(vc, va, vb, border_res, border_dz)
 
         n_ab = va.cross(vb).normalized()
         n_bc = vb.cross(vc).normalized()
         n_ca = vc.cross(va).normalized()
 
-        lattitudish_edge(accum, faces, va, vb, vc, va_2, vb_2, vc_2, u_res, border_res, border_dz)
-        lattitudish_edge(accum, faces, vb, vc, va, vb_2, vc_2, va_2, u_res, border_res, border_dz)
-        lattitudish_edge(accum, faces, vc, va, vb, vc_2, va_2, vb_2, u_res, border_res, border_dz)
+        self.lattitudish_edge(va, vb, vc, va_2, vb_2, vc_2, u_res, border_res, border_dz)
+        self.lattitudish_edge(vb, vc, va, vb_2, vc_2, va_2, u_res, border_res, border_dz)
+        self.lattitudish_edge(vc, va, vb, vc_2, va_2, vb_2, u_res, border_res, border_dz)
 
-        inset_panel(accum, faces, vc, va, vb, vc_2, va_2, vb_2, u_res, border_dz)
+        self.inset_panel(vc, va, vb, vc_2, va_2, vb_2, u_res, border_dz)
 
     @classmethod
     def build_face_TS(cls, accum, faces, u_res, va, vb, vc):
@@ -355,8 +365,7 @@ class TetrahedralSphereArbitrary:
     @classmethod
     def make_mesh(cls, name, len1, u_res, border_res, border_dz):
 
-        accum = VertexAccumulator()
-        faces=[]
+        tsa = TetrahedralSphereArbitrary()
 
         len2 = sqrt(1-len1*len1)
 
@@ -365,25 +374,21 @@ class TetrahedralSphereArbitrary:
         v3 = Vector([0, len1, -len2])
         v4 = Vector([0, -len1, -len2])
 
-        if True:
-            accum.idxFor(v1)
-            accum.idxFor(v2)
-            accum.idxFor(v3)
-            accum.idxFor(v4)
-
-        cls.build_face(accum, faces, u_res, v2, v1, v3, border_res, border_dz)
-        cls.build_face(accum, faces, u_res, v1, v2, v4, border_res, border_dz)
-        cls.build_face(accum, faces, u_res, v4, v3, v1, border_res, border_dz)
-        cls.build_face(accum, faces, u_res, v3, v4, v2, border_res, border_dz)
+        tsa.build_face(u_res, v2, v1, v3, border_res, border_dz)
+        tsa.build_face(u_res, v1, v2, v4, border_res, border_dz)
+        tsa.build_face(u_res, v4, v3, v1, border_res, border_dz)
+        tsa.build_face(u_res, v3, v4, v2, border_res, border_dz)
 
         mesh = bpy.data.meshes.new(name)
-        mesh.from_pydata(accum.verts(), [], faces)
+        mesh.from_pydata(tsa.accum.verts(), [], tsa.faces)
 
         mesh.validate(False)
 
         mesh.show_normal_face = True
         mesh.materials.append(None)
         mesh.materials.append(None)
+        for i in range(len(tsa.material_indices)):
+            mesh.polygons[i].material_index = tsa.material_indices[i]
 
         return mesh
 
@@ -491,7 +496,9 @@ def test3():
 
 
 def test2():
-    TetrahedralSphereArbitrary.tet_sphere_arbitrary_op(bpy.context.scene, 0.5, 12, 3, 0.1)
+    obj = TetrahedralSphereArbitrary.tet_sphere_arbitrary_op(bpy.context.scene, 0.5, 12, 3, 0.1)
+    obj.data.materials[0] = bpy.data.materials[0]
+    obj.data.materials[1] = bpy.data.materials[1]
 
 if __name__ == "__main__":
     try:
