@@ -13,6 +13,7 @@ bl_info = {
 
 
 import bpy
+import bmesh
 from mathutils import *
 from math import *
 
@@ -88,6 +89,9 @@ class GreatCircleArc:
             t2 = t*(1-2*self.e2) + self.e2
 
             return self.base.interpolate(t2)
+
+        def theta_span(self):
+            return self.base.theta - 2*self.erosion
 
     def inset(self, erosion):
         return GreatCircleArc.Inset(self, erosion)
@@ -187,6 +191,7 @@ class TetrahedralSphereArbitrary:
 
     faces = []
     material_indices = []
+    uv_maps = []
     accum = VertexAccumulator()
 
     @classmethod
@@ -202,12 +207,13 @@ class TetrahedralSphereArbitrary:
         else:
             return v1
 
-    def add_face_v(self, mat_index, verts):
-        self.add_face_i(mat_index, [ self.accum.idxFor(v) for v in verts] )
+    def add_face_v(self, mat_index, verts, uv_maps=None):
+        self.add_face_i(mat_index, [ self.accum.idxFor(v) for v in verts] , uv_maps)
 
-    def add_face_i(self, mat_index, indices):
+    def add_face_i(self, mat_index, indices, uv_maps = None):
         self.faces.append(indices)
         self.material_indices.append(mat_index)
+        self.uv_maps.append(uv_maps)
 
     def lattitudish_corner(self, va, vb, vc, border_res, border_dz):
         if border_res<1:
@@ -291,12 +297,23 @@ class TetrahedralSphereArbitrary:
 
         for v in range(border_res):
             for u in range(border_res):
-                self.add_face_i(1, [indices[v][u], indices[v][u+1], indices[v+1][u+1], indices[v+1][u]])
+                uv_maps = {
+                    "default" :
+                        #[ [a/border_res, b/border_res] for a in [v,v+1] for b in [u,u+1]]
+                        [ [ q/border_res for q in uv] for uv in self.uv_unit_square(u,v) ]
+                }
+                self.add_face_i(1, [indices[v][u], indices[v][u+1], indices[v+1][u+1], indices[v+1][u]], uv_maps)
 
         return v3
 
+    def uv_unit_square(self, u, v):
+        """
+        :return: a 1x1 square based at u,v.  You probably want to scale this down based on the U and V resolution
+        """
+        return [[u,v], [u+1, v], [u+1,v+1], [u,v+1]]
 
-    def lattitudish_edge(self, va, vb, vc, va_2, vb_2, vc_2, u_res, border_res, border_dz):
+
+    def lattitudish_edge(self, va, vb, vc, va_2, vb_2, vc_2, arc_res, border_res, border_dz):
 
         gca_12 = GreatCircleArc(vb, vc).inset(asin(border_dz))
 
@@ -305,17 +322,23 @@ class TetrahedralSphereArbitrary:
 
         v1 = gca_12.interpolate(0)
         v2 = gca_12.interpolate(1)
-        verts = self.grid_interpolator(u_res, border_res, v1, gca_12, v2,
-                               GreatCircleArc(v2, vc_2), vc_2, lc_y1, vb_2, GreatCircleArc(v1, vb_2))
 
-        verts = self.grid_interpolator(border_res, u_res, vb_2, GreatCircleArc(vb_2, v1), v1, gca_12, v2,
+        verts = self.grid_interpolator(border_res, arc_res, vb_2, GreatCircleArc(vb_2, v1), v1, gca_12, v2,
                                GreatCircleArc(vc_2, v2), vc_2, lc_y1 )
 
         indices = [  [ self.accum.idxFor(v) for v in row ] for row in verts]
 
+        ascension = asin(border_dz)
+
+        v_scale = ceil(gca_12.theta_span() /ascension) / arc_res
+
         for v in range(len(indices)-1):
             for u in range(len(indices[v])-1):
-                self.add_face_i( 1, [indices[v][u], indices[v][u+1], indices[v+1][u+1], indices[v+1][u]] )
+                uv_maps = {
+                    "default":
+                        [ [uv[0]/border_res, uv[1] * v_scale] for uv in self.uv_unit_square(u,v)]
+                }
+                self.add_face_i( 1, [indices[v][u], indices[v][u+1], indices[v+1][u+1], indices[v+1][u]], uv_maps )
 
 
     def lattitudish_edge2(self, va, vb, vc, va_2, vb_2, vc_2, u_res, border_res, border_dz):
@@ -353,6 +376,33 @@ class TetrahedralSphereArbitrary:
                 lc_x1 = lc_x2
             lc_y1 = lc_y2
 
+    def panel_uvs(self, indices):
+
+        cylindrical_uvs = []
+        spherical_uvs = []
+
+        base = None
+        for i in range(len(indices)):
+            v = self.accum.verts()[indices[i]]
+
+            theta = atan2(v[1], v[0])
+            if base is None:
+                base = theta
+            else:
+                adj = floor( 0.5 + (base-theta)/(2*pi))
+                theta = theta + 2*pi*adj
+
+            phi = acos(v[2]/v.magnitude)
+            phi2 = 1- phi/(pi)
+
+            cylindrical_uvs .append( [ theta/pi, (v[2]+1)/2])
+            spherical_uvs.append( [ theta/pi, phi2])
+
+        print (cylindrical_uvs)
+        return {
+            "cylindrical" : cylindrical_uvs,
+            "spherical" : spherical_uvs
+        }
 
     def inset_panel(self, va, vb, vc, va_2, vb_2, vc_2, u_res, border_dz):
 
@@ -382,10 +432,10 @@ class TetrahedralSphereArbitrary:
                 i2 = indices[v][u+1]
                 i4 = indices[v+1][u]
 
-                self.add_face_i(0, [i1, i2, i4])
+                self.add_face_i(0, [i1, i2, i4], self.panel_uvs([i1, i2, i4]))
                 if (u+v+1<u_res):
                     i3 = indices[v+1][u+1]
-                    self.add_face_i(0, [ i2, i3, i4])
+                    self.add_face_i(0, [ i2, i3, i4], self.panel_uvs([ i2, i3, i4]))
 
 
     def build_face(self, u_res, va, vb, vc, border_res, border_dz):
@@ -461,6 +511,16 @@ class TetrahedralSphereArbitrary:
 
             circle1 = circle2
 
+    def copy_uv_information(self, bm, uv_layer):
+        print(uv_layer.name)
+        for fi in range(len(bm.faces)):
+            face = bm.faces[fi]
+            uvs = self.uv_for(fi, uv_layer.name)
+            if uvs is not None:
+                # print(uvs)
+                for i in range(len(face.loops)):
+                    face.loops[i][uv_layer].uv = uvs[i]
+
     @classmethod
     def make_mesh(cls, name, len1, u_res, border_res, border_dz):
 
@@ -489,6 +549,19 @@ class TetrahedralSphereArbitrary:
         for i in range(len(tsa.material_indices)):
             mesh.polygons[i].material_index = tsa.material_indices[i]
 
+        mesh.uv_textures.new("cylindrical")
+        mesh.uv_textures.new("spherical")
+
+        bm = bmesh.new()
+        bm.from_mesh(mesh)
+        bm.faces.ensure_lookup_table()
+
+        for uvt in mesh.uv_textures:
+            uv_layer = bm.loops.layers.uv[uvt.name]
+            tsa.copy_uv_information(bm, uv_layer)
+
+        bm.to_mesh(mesh)
+
         return mesh
 
     @classmethod
@@ -499,6 +572,19 @@ class TetrahedralSphereArbitrary:
         scn.objects.link(obj)
         obj.location = scn.cursor_location
         return obj
+
+    def uv_for(self, face_index, uv_name):
+        uv_map = self.uv_maps[face_index]
+        if uv_map is None:
+            return None
+
+        rval = uv_map.get(uv_name)
+
+        if (rval is None):
+            rval = uv_map.get("default")
+
+        return rval
+
 
 #
 
