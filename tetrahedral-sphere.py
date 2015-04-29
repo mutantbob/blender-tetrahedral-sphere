@@ -75,6 +75,22 @@ class GreatCircleArc:
         theta_2 = t * self.theta
         return self.p1 * cos(theta_2) + self.axis2 * sin(theta_2)
 
+    def point_for_raw(self, ascension):
+        return self.p1 * cos(ascension) + self.axis2 * sin(ascension)
+
+    class Inset:
+        def __init__(self, base, erosion):
+            self.base = base
+            self.erosion = erosion
+            self.e2 = erosion / base.theta
+
+        def interpolate(self, t):
+            t2 = t*(1-2*self.e2) + self.e2
+
+            return self.base.interpolate(t2)
+
+    def inset(self, erosion):
+        return GreatCircleArc.Inset(self, erosion)
 
 class LesserCircle:
     """
@@ -218,8 +234,91 @@ class TetrahedralSphereArbitrary:
 
         return closer_point(va, lc_y1.intersect(lc_x1))
 
+    def grid_interpolator(self, u_res, v_res, v1, gca_12, v2, gca_23, v3, gca_43, v4, gca_14):
+        verts = []
+        row = []
+        verts.append(row)
+        row.append(v1)
+        for u in range(1, u_res):
+            row.append(gca_12.interpolate(u / u_res))
+        row.append(v2)
+        for v in range(1, v_res):
+            row = []
+            verts.append(row)
+            v14 = gca_14.interpolate(v / v_res)
+            v23 = gca_23.interpolate(v / v_res)
+            row.append(v14)
+            for u in range(1, u_res):
+                gc = GreatCircleArc(v14, v23)
+                row.append(gc.interpolate(u / u_res))
+            row.append(v23)
+        row = []
+        verts.append(row)
+        row.append(v4)
+        for u in range(1, u_res):
+            row.append(gca_43.interpolate(u / u_res))
+        row.append(v3)
+
+        return verts
+
+    def diamond_corner(self, va, vb, vc, border_res, border_dz):
+        """
+        Build the kite-shaped corner at va which points at vb and vc
+        """
+        if border_res<1:
+            return
+        n1 = va.cross(vb)
+        n2 = vc.cross(va)
+        lc_y1 = LesserCircle(n1, 0)
+        lc_y2 = LesserCircle(n1, border_dz)
+
+        lc_x1 = LesserCircle(n2, 0)
+        lc_x2 = LesserCircle(n2, border_dz)
+
+        ascension = asin(border_dz)
+        v1 = closer_point(va, lc_y1.intersect(lc_x1))
+        v2 = GreatCircleArc(va, vb).point_for_raw(ascension)
+        v3 = closer_point(va, lc_y2.intersect(lc_x2))
+        v4 = GreatCircleArc(va, vc).point_for_raw(ascension)
+
+        gca_12 = GreatCircleArc(v1, v2)
+        gca_14 = GreatCircleArc(v1, v4)
+        gca_23 = GreatCircleArc(v2, v3)
+        gca_43 = GreatCircleArc(v4, v3)
+        verts = self.grid_interpolator(border_res, border_res, v1, gca_12, v2, gca_23, v3, gca_43, v4, gca_14)
+
+        indices = [  [ self.accum.idxFor(v) for v in row ] for row in verts]
+
+        for v in range(border_res):
+            for u in range(border_res):
+                self.add_face_i(1, [indices[v][u], indices[v][u+1], indices[v+1][u+1], indices[v+1][u]])
+
+        return v3
+
 
     def lattitudish_edge(self, va, vb, vc, va_2, vb_2, vc_2, u_res, border_res, border_dz):
+
+        gca_12 = GreatCircleArc(vb, vc).inset(asin(border_dz))
+
+        n1 = vb.cross(vc)
+        lc_y1 = LesserCircleArc(n1, vb_2, vc_2)
+
+        v1 = gca_12.interpolate(0)
+        v2 = gca_12.interpolate(1)
+        verts = self.grid_interpolator(u_res, border_res, v1, gca_12, v2,
+                               GreatCircleArc(v2, vc_2), vc_2, lc_y1, vb_2, GreatCircleArc(v1, vb_2))
+
+        verts = self.grid_interpolator(border_res, u_res, vb_2, GreatCircleArc(vb_2, v1), v1, gca_12, v2,
+                               GreatCircleArc(vc_2, v2), vc_2, lc_y1 )
+
+        indices = [  [ self.accum.idxFor(v) for v in row ] for row in verts]
+
+        for v in range(len(indices)-1):
+            for u in range(len(indices[v])-1):
+                self.add_face_i( 1, [indices[v][u], indices[v][u+1], indices[v+1][u+1], indices[v+1][u]] )
+
+
+    def lattitudish_edge2(self, va, vb, vc, va_2, vb_2, vc_2, u_res, border_res, border_dz):
 
         n1 = vb.cross(vc)
         lc_y1 = LesserCircle(n1, 0)
@@ -291,9 +390,9 @@ class TetrahedralSphereArbitrary:
 
     def build_face(self, u_res, va, vb, vc, border_res, border_dz):
 
-        va_2 = self.lattitudish_corner(va, vb, vc, border_res, border_dz)
-        vb_2 = self.lattitudish_corner(vb, vc, va, border_res, border_dz)
-        vc_2 = self.lattitudish_corner(vc, va, vb, border_res, border_dz)
+        va_2 = self.diamond_corner(va, vb, vc, border_res, border_dz)
+        vb_2 = self.diamond_corner(vb, vc, va, border_res, border_dz)
+        vc_2 = self.diamond_corner(vc, va, vb, border_res, border_dz)
 
         n_ab = va.cross(vb).normalized()
         n_bc = vb.cross(vc).normalized()
