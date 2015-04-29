@@ -67,7 +67,7 @@ class GreatCircleArc:
             self.theta = acos(self.cos_theta)
         #print("%f\t%r,%r,%r"%(self.theta, self.p1, self.axis2, self.normal))
 
-    def point_for(self, t):
+    def interpolate(self, t):
         """
         :param t: in the range[0..1] .  0 corresponds to p1.  1 corresponds to p2
         :return:
@@ -180,9 +180,9 @@ class TetrahedralSphereArbitrary:
     @classmethod
     def artillery(cls, circle_j, v1, u_res, u, v):
         if u + v > 0:
-            v2 = circle_j.point_for(u / (u + v))
+            v2 = circle_j.interpolate(u / (u + v))
             circle_k = GreatCircleArc(v1, v2)
-            return circle_k.point_for((u + v) / u_res)
+            return circle_k.interpolate((u + v) / u_res)
         else:
             return v1
 
@@ -233,12 +233,12 @@ class TetrahedralSphereArbitrary:
         for v in range(border_res):
             lc_y2 = LesserCircle(n1, (v+1)/border_res *border_dz)
 
-            n2 = r_interp.point_for(0)
+            n2 = r_interp.interpolate(0)
             lc_x1 = LesserCircle(n2, vb_2.dot(n2))
 
             for u in range(u_res):
                 vbct = lca_bc.interpolate(  (u+1)/u_res )
-                n2 = r_interp.point_for( (u+1)/u_res)
+                n2 = r_interp.interpolate( (u+1)/u_res)
                 if False and (u+1==u_res):
                     print("%f  ;  %r =? %r" % ((n2-n_ac).magnitude, n2, n_ac))
                     print("%f  ;  %r =? %r" % ((vbct-vc_2).magnitude, vbct, vc_2))
@@ -270,7 +270,7 @@ class TetrahedralSphereArbitrary:
                 if u+v>0:
                     f = v / (u + v)
                     v5 = lca_bc.interpolate(f)
-                    lca_a5 = LesserCircleArc(-normal_interp.point_for(f), v5, va_2)
+                    lca_a5 = LesserCircleArc(-normal_interp.interpolate(f), v5, va_2)
                     vert = lca_a5.interpolate(1 - (u+v)/u_res)
                 else:
                     vert = va_2
@@ -336,28 +336,28 @@ class TetrahedralSphereArbitrary:
 
         circle_k = GreatCircleArc(va, vc)
         circle_m = GreatCircleArc(vb, vc)
-        circle1 = GreatCircleArc(circle_k.point_for(0), circle_m.point_for(0))
+        circle1 = GreatCircleArc(circle_k.interpolate(0), circle_m.interpolate(0))
         #print("%r \n%r\n%r"%(circle_k.point_for(1), circle_m.point_for(1), vc))
         for u in range(u_res):
 
-            circle2 = GreatCircleArc(circle_k.point_for((u+1)/u_res), circle_m.point_for((u+1)/u_res))
+            circle2 = GreatCircleArc(circle_k.interpolate((u+1)/u_res), circle_m.interpolate((u+1)/u_res))
 
             v_res2 = u_res-u
             for v in range(v_res2):
 
-                v5 = circle1.point_for(v/v_res2)
+                v5 = circle1.interpolate(v/v_res2)
                 if v_res2>1:
                     f2 = v / (v_res2 - 1)
                 else:
                     f2 = 0
-                v6 = circle2.point_for(f2)
-                v8 = circle1.point_for((v+1)/v_res2)
+                v6 = circle2.interpolate(f2)
+                v8 = circle1.interpolate((v+1)/v_res2)
 
                 #print([v5, v6, v8])
 
                 faces.append([accum.idxFor(v) for v in [v5, v6, v8]])
                 if (v < v_res2-1):
-                    v7 = circle2.point_for((v+1)/(v_res2-1))
+                    v7 = circle2.interpolate((v+1)/(v_res2-1))
                     faces.append([accum.idxFor(v) for v in [v6, v7, v8]])
 
             circle1 = circle2
