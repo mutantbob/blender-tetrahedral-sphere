@@ -267,7 +267,7 @@ class TetrahedralSphereArbitrary:
 
         return verts
 
-    def diamond_corner(self, va, vb, vc, border_res, border_dz):
+    def diamond_corner(self, va, vb, vc, border_res, border_dz, material_index):
         """
         Build the kite-shaped corner at va which points at vb and vc
         """
@@ -302,7 +302,7 @@ class TetrahedralSphereArbitrary:
                         #[ [a/border_res, b/border_res] for a in [v,v+1] for b in [u,u+1]]
                         [ [ q/border_res for q in uv] for uv in self.uv_unit_square(u,v) ]
                 }
-                self.add_face_i(1, [indices[v][u], indices[v][u+1], indices[v+1][u+1], indices[v+1][u]], uv_maps)
+                self.add_face_i(material_index, [indices[v][u], indices[v][u+1], indices[v+1][u+1], indices[v+1][u]], uv_maps)
 
         return v3
 
@@ -313,7 +313,7 @@ class TetrahedralSphereArbitrary:
         return [[u,v], [u+1, v], [u+1,v+1], [u,v+1]]
 
 
-    def lattitudish_edge(self, va, vb, vc, va_2, vb_2, vc_2, arc_res, border_res, border_dz):
+    def lattitudish_edge(self, va, vb, vc, va_2, vb_2, vc_2, arc_res, border_res, border_dz, material_index):
 
         gca_12 = GreatCircleArc(vb, vc).inset(asin(border_dz))
 
@@ -338,7 +338,7 @@ class TetrahedralSphereArbitrary:
                     "default":
                         [ [uv[0]/border_res, uv[1] * v_scale] for uv in self.uv_unit_square(u,v)]
                 }
-                self.add_face_i( 1, [indices[v][u], indices[v][u+1], indices[v+1][u+1], indices[v+1][u]], uv_maps )
+                self.add_face_i( material_index, [indices[v][u], indices[v][u+1], indices[v+1][u+1], indices[v+1][u]], uv_maps )
 
 
     def lattitudish_edge2(self, va, vb, vc, va_2, vb_2, vc_2, u_res, border_res, border_dz):
@@ -404,7 +404,7 @@ class TetrahedralSphereArbitrary:
             "spherical" : spherical_uvs
         }
 
-    def inset_panel(self, va, vb, vc, va_2, vb_2, vc_2, u_res, border_dz):
+    def inset_panel(self, va, vb, vc, va_2, vb_2, vc_2, u_res, material_index):
 
         indices = []
 
@@ -432,27 +432,27 @@ class TetrahedralSphereArbitrary:
                 i2 = indices[v][u+1]
                 i4 = indices[v+1][u]
 
-                self.add_face_i(0, [i1, i2, i4], self.panel_uvs([i1, i2, i4]))
+                self.add_face_i(material_index, [i1, i2, i4], self.panel_uvs([i1, i2, i4]))
                 if (u+v+1<u_res):
                     i3 = indices[v+1][u+1]
-                    self.add_face_i(0, [ i2, i3, i4], self.panel_uvs([ i2, i3, i4]))
+                    self.add_face_i(material_index, [ i2, i3, i4], self.panel_uvs([ i2, i3, i4]))
 
 
-    def build_face(self, u_res, va, vb, vc, border_res, border_dz):
+    def build_face(self, u_res, va, vb, vc, border_res, border_dz, material_index):
 
-        va_2 = self.diamond_corner(va, vb, vc, border_res, border_dz)
-        vb_2 = self.diamond_corner(vb, vc, va, border_res, border_dz)
-        vc_2 = self.diamond_corner(vc, va, vb, border_res, border_dz)
+        va_2 = self.diamond_corner(va, vb, vc, border_res, border_dz,0)
+        vb_2 = self.diamond_corner(vb, vc, va, border_res, border_dz,0)
+        vc_2 = self.diamond_corner(vc, va, vb, border_res, border_dz,0)
 
         n_ab = va.cross(vb).normalized()
         n_bc = vb.cross(vc).normalized()
         n_ca = vc.cross(va).normalized()
 
-        self.lattitudish_edge(va, vb, vc, va_2, vb_2, vc_2, u_res, border_res, border_dz)
-        self.lattitudish_edge(vb, vc, va, vb_2, vc_2, va_2, u_res, border_res, border_dz)
-        self.lattitudish_edge(vc, va, vb, vc_2, va_2, vb_2, u_res, border_res, border_dz)
+        self.lattitudish_edge(va, vb, vc, va_2, vb_2, vc_2, u_res, border_res, border_dz, 0)
+        self.lattitudish_edge(vb, vc, va, vb_2, vc_2, va_2, u_res, border_res, border_dz, 0)
+        self.lattitudish_edge(vc, va, vb, vc_2, va_2, vb_2, u_res, border_res, border_dz, 0)
 
-        self.inset_panel(vc, va, vb, vc_2, va_2, vb_2, u_res, border_dz)
+        self.inset_panel(vc, va, vb, vc_2, va_2, vb_2, u_res, material_index)
 
     @classmethod
     def build_face_TS(cls, accum, faces, u_res, va, vb, vc):
@@ -533,19 +533,20 @@ class TetrahedralSphereArbitrary:
         v3 = Vector([0, len1, -len2])
         v4 = Vector([0, -len1, -len2])
 
-        tsa.build_face(u_res, v2, v1, v3, border_res, border_dz)
-        tsa.build_face(u_res, v1, v2, v4, border_res, border_dz)
-        tsa.build_face(u_res, v4, v3, v1, border_res, border_dz)
-        tsa.build_face(u_res, v3, v4, v2, border_res, border_dz)
+        tsa.build_face(u_res, v2, v1, v3, border_res, border_dz, 1)
+        tsa.build_face(u_res, v1, v2, v4, border_res, border_dz, 2)
+        tsa.build_face(u_res, v4, v3, v1, border_res, border_dz, 3)
+        tsa.build_face(u_res, v3, v4, v2, border_res, border_dz, 4)
 
         mesh = bpy.data.meshes.new(name)
         mesh.from_pydata(tsa.accum.verts(), [], tsa.faces)
 
         mesh.validate(False)
 
-        mesh.show_normal_face = True
-        mesh.materials.append(None)
-        mesh.materials.append(None)
+        #mesh.show_normal_face = True
+        while len(mesh.materials) < 5:
+            mesh.materials.append(None)
+
         for i in range(len(tsa.material_indices)):
             mesh.polygons[i].material_index = tsa.material_indices[i]
 
