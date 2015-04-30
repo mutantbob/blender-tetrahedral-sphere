@@ -144,7 +144,7 @@ class LesserCircle:
     def solve(self, a, b, d, e, f, h):
         det = a*f - e*b
         if (det==0):
-            print([a,b,d,e,f,h])
+            print("tetrahedral-sphere.py: determinant = 0 ; %r"%[a,b,d,e,f,h])
         x = (d*f - h*b) / det
         y = (a*h - e*d) / det
 
@@ -398,7 +398,7 @@ class TetrahedralSphereArbitrary:
             cylindrical_uvs .append( [ theta/pi, (v[2]+1)/2])
             spherical_uvs.append( [ theta/pi, phi2])
 
-        print (cylindrical_uvs)
+        #print (cylindrical_uvs)
         return {
             "cylindrical" : cylindrical_uvs,
             "spherical" : spherical_uvs
@@ -512,7 +512,7 @@ class TetrahedralSphereArbitrary:
             circle1 = circle2
 
     def copy_uv_information(self, bm, uv_layer):
-        print(uv_layer.name)
+        #print(uv_layer.name)
         for fi in range(len(bm.faces)):
             face = bm.faces[fi]
             uvs = self.uv_for(fi, uv_layer.name)
