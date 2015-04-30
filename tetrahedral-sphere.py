@@ -215,6 +215,62 @@ class TetrahedralSphereArbitrary:
         self.material_indices.append(mat_index)
         self.uv_maps.append(uv_maps)
 
+    def bridge_edges(self, material_index, ring1, ring2, uv_method, inside_out=True):
+        """
+
+        :param ring1: the "bottom" ring, from left to right
+        :param ring2: the "top" ring. from left to right
+        :param inside_out:
+        :return:
+        """
+        i=0
+        j=0
+
+        old_normal = None
+
+        verts = self.accum.verts()
+
+        while i+1 < len(ring1) or j+1 < len(ring2):
+            if i+1 < len(ring1):
+                if j+1 < len(ring2):
+
+                    va = verts[ring1[i]]
+                    vb = verts[ring2[j]]
+                    vc = verts[ring1[i+1]]
+                    vd = verts[ring2[j+1]]
+
+                    normal_uno = (vc-va).cross(vb-va) .normalized()
+                    normal_dos = (vc-vb).cross(vd-vb) .normalized()
+                    convexity_espanol = normal_uno.cross(normal_dos)
+
+                    normal_alpha = (vc-va).cross(vd-va) .normalized()
+                    normal_beta = (vd-va).cross(vb-va) .normalized()
+                    convexity_greek = normal_alpha.cross(normal_beta)
+
+                    if (convexity_greek > convexity_espanol):
+                        advance_ring1=True
+                    else:
+                        advance_ring1 = False
+                else:
+                        advance_ring1=True
+            else:
+                advance_ring1 = False
+
+            if advance_ring1:
+                idxs = [ring2[j], ring1[i], ring1[i + 1]]
+                i = i + 1
+            else:
+                if len(ring2)>1 or j==0:
+                    idxs = [ring2[j], ring1[i], ring2[j + 1]]
+                    j = j + 1
+                else:
+                    continue
+            if inside_out:
+                idxs.reverse()
+
+            self.add_face_i(material_index, idxs, uv_method(idxs))
+
+
     def lattitudish_corner(self, va, vb, vc, border_res, border_dz):
         if border_res<1:
             return
@@ -239,6 +295,7 @@ class TetrahedralSphereArbitrary:
             lc_y1 = lc_y2
 
         return closer_point(va, lc_y1.intersect(lc_x1))
+
 
     def grid_interpolator(self, u_res, v_res, v1, gca_12, v2, gca_23, v3, gca_43, v4, gca_14):
         verts = []
@@ -266,6 +323,7 @@ class TetrahedralSphereArbitrary:
         row.append(v3)
 
         return verts
+
 
     def diamond_corner(self, va, vb, vc, border_res, border_dz, material_index):
         """
@@ -376,6 +434,7 @@ class TetrahedralSphereArbitrary:
                 lc_x1 = lc_x2
             lc_y1 = lc_y2
 
+
     def panel_uvs(self, indices):
 
         cylindrical_uvs = []
@@ -404,39 +463,25 @@ class TetrahedralSphereArbitrary:
             "spherical" : spherical_uvs
         }
 
+
     def inset_panel(self, va, vb, vc, va_2, vb_2, vc_2, u_res, material_index):
 
-        indices = []
-
         lca_bc = LesserCircleArc(vb.cross(vc), vb_2, vc_2)
-
         normal_interp = GreatCircleArc(va.cross(vb), va.cross(vc))
 
-        for v in range(u_res+1):
-            row = []
-            indices.append(row)
-            for u in range(u_res-v+1):
-                if u+v>0:
-                    f = v / (u + v)
-                    v5 = lca_bc.interpolate(f)
-                    lca_a5 = LesserCircleArc(-normal_interp.interpolate(f), v5, va_2)
-                    vert = lca_a5.interpolate(1 - (u+v)/u_res)
-                else:
-                    vert = va_2
-                idx = self.accum.idxFor(vert)
-                row.append(idx)
+        ring1 = [ self.accum.idxFor(va_2)]
+        for m in range(1, u_res+1):
 
-        for v in range(u_res):
-            for u in range(u_res-v):
-                i1 = indices[v][u]
-                i2 = indices[v][u+1]
-                i4 = indices[v+1][u]
+            ring2 = []
+            for k in range(m+1):
+                v5 = lca_bc.interpolate(k/m)
+                lca_a5 = LesserCircleArc(-normal_interp.interpolate(k/m), v5, va_2)
+                vert = lca_a5.interpolate(1-m/u_res)
+                ring2.append(self.accum.idxFor(vert))
 
-                self.add_face_i(material_index, [i1, i2, i4], self.panel_uvs([i1, i2, i4]))
-                if (u+v+1<u_res):
-                    i3 = indices[v+1][u+1]
-                    self.add_face_i(material_index, [ i2, i3, i4], self.panel_uvs([ i2, i3, i4]))
+            self.bridge_edges(material_index, ring1, ring2, self.panel_uvs)
 
+            ring1 = ring2
 
     def build_face(self, u_res, va, vb, vc, border_res, border_dz, material_index):
 
