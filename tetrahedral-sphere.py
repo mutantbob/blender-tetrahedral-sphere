@@ -371,7 +371,7 @@ class TetrahedralSphereArbitrary:
         return [[u,v], [u+1, v], [u+1,v+1], [u,v+1]]
 
 
-    def lattitudish_edge(self, va, vb, vc, va_2, vb_2, vc_2, arc_res, border_res, border_dz, material_index):
+    def lattitudish_edge(self, va, vb, vc, va_2, vb_2, vc_2, arc_res, border_res, border_dz, material_index, stripe_aspect):
 
         gca_12 = GreatCircleArc(vb, vc).inset(asin(border_dz))
 
@@ -388,7 +388,7 @@ class TetrahedralSphereArbitrary:
 
         ascension = asin(border_dz)
 
-        v_scale = ceil(gca_12.theta_span() /ascension) / arc_res
+        v_scale = ceil(gca_12.theta_span() /ascension / stripe_aspect) / arc_res
 
         for v in range(len(indices)-1):
             for u in range(len(indices[v])-1):
@@ -483,7 +483,7 @@ class TetrahedralSphereArbitrary:
 
             ring1 = ring2
 
-    def build_face(self, u_res, va, vb, vc, border_res, border_dz, material_index):
+    def build_face(self, u_res, va, vb, vc, border_res, border_dz, material_index, stripe_aspect):
 
         va_2 = self.diamond_corner(va, vb, vc, border_res, border_dz,0)
         vb_2 = self.diamond_corner(vb, vc, va, border_res, border_dz,0)
@@ -493,9 +493,9 @@ class TetrahedralSphereArbitrary:
         n_bc = vb.cross(vc).normalized()
         n_ca = vc.cross(va).normalized()
 
-        self.lattitudish_edge(va, vb, vc, va_2, vb_2, vc_2, u_res, border_res, border_dz, 0)
-        self.lattitudish_edge(vb, vc, va, vb_2, vc_2, va_2, u_res, border_res, border_dz, 0)
-        self.lattitudish_edge(vc, va, vb, vc_2, va_2, vb_2, u_res, border_res, border_dz, 0)
+        self.lattitudish_edge(va, vb, vc, va_2, vb_2, vc_2, u_res, border_res, border_dz, 1, stripe_aspect)
+        self.lattitudish_edge(vb, vc, va, vb_2, vc_2, va_2, u_res, border_res, border_dz, 1, stripe_aspect)
+        self.lattitudish_edge(vc, va, vb, vc_2, va_2, vb_2, u_res, border_res, border_dz, 1, stripe_aspect)
 
         self.inset_panel(vc, va, vb, vc_2, va_2, vb_2, u_res, material_index)
 
@@ -567,7 +567,7 @@ class TetrahedralSphereArbitrary:
                     face.loops[i][uv_layer].uv = uvs[i]
 
     @classmethod
-    def make_mesh(cls, name, len1, u_res, border_res, border_dz):
+    def make_mesh(cls, name, len1, u_res, border_res, border_dz, stripe_aspect):
 
         tsa = TetrahedralSphereArbitrary()
 
@@ -578,10 +578,10 @@ class TetrahedralSphereArbitrary:
         v3 = Vector([0, len1, -len2])
         v4 = Vector([0, -len1, -len2])
 
-        tsa.build_face(u_res, v2, v1, v3, border_res, border_dz, 1)
-        tsa.build_face(u_res, v1, v2, v4, border_res, border_dz, 2)
-        tsa.build_face(u_res, v4, v3, v1, border_res, border_dz, 3)
-        tsa.build_face(u_res, v3, v4, v2, border_res, border_dz, 4)
+        tsa.build_face(u_res, v2, v1, v3, border_res, border_dz, 2, stripe_aspect)
+        tsa.build_face(u_res, v1, v2, v4, border_res, border_dz, 3, stripe_aspect)
+        tsa.build_face(u_res, v4, v3, v1, border_res, border_dz, 4, stripe_aspect)
+        tsa.build_face(u_res, v3, v4, v2, border_res, border_dz, 5, stripe_aspect)
 
         mesh = bpy.data.meshes.new(name)
         mesh.from_pydata(tsa.accum.verts(), [], tsa.faces)
@@ -611,9 +611,9 @@ class TetrahedralSphereArbitrary:
         return mesh
 
     @classmethod
-    def tet_sphere_arbitrary_op(cls, scn, len1, u_res, border_res, border_dz):
+    def tet_sphere_arbitrary_op(cls, scn, len1, u_res, border_res, border_dz, stripe_aspect):
         name = "tetrahedral sphere"
-        mesh = cls.make_mesh(name, len1, u_res, border_res, border_dz)
+        mesh = cls.make_mesh(name, len1, u_res, border_res, border_dz, stripe_aspect)
         obj = bpy.data.objects.new(name, mesh)
         scn.objects.link(obj)
         obj.location = scn.cursor_location
@@ -651,10 +651,13 @@ class TetrahedralSphere(bpy.types.Operator):
     border_dz = bpy.props.FloatProperty(name="border size", default=0.05, min=0.001, max=0.7,
                                         precision=4, step=10,
                                         description="thickness of the edge border strips measured along each local polar axis")
+    stripe_aspect = bpy.props.FloatProperty(name="border aspect", default=1, min=0.01, max=100,
+                                        precision=3, step=10,
+                                        description="aspect ratio of the texture used in the edge border strips")
 
     def execute(self, ctx):
         try:
-            obj = TetrahedralSphereArbitrary.tet_sphere_arbitrary_op(ctx.scene, self.len1/2.0, self.u_res, self.border_res, self.border_dz)
+            obj = TetrahedralSphereArbitrary.tet_sphere_arbitrary_op(ctx.scene, self.len1/2.0, self.u_res, self.border_res, self.border_dz, self.stripe_aspect)
             obj.select = True
             ctx.scene.objects.active = obj
             return {'FINISHED'}
