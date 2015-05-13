@@ -53,6 +53,15 @@ def invent_coordinate_system(a, b):
     return [a,b2,c]
 
 
+def acos_(x):
+    if x>=1:
+        return 0
+    if x<=-1:
+        return pi
+
+    return acos(x)
+
+
 class GreatCircleArc:
     def __init__(self, p1, p2):
         p2 = p2.normalized()
