@@ -185,6 +185,18 @@ class LesserCircleArc:
 
 #
 
+class UVAngleStabilizer:
+    base=None
+
+    def stabilize(self, theta):
+
+        if self.base is None:
+            self.base = theta
+        else:
+            adj = floor( 0.5 + (self.base-theta)/(2*pi))
+            theta = theta + 2*pi*adj
+
+        return theta
 
 def closer_point(v_master, alternatives):
     d=None
@@ -445,39 +457,66 @@ class TetrahedralSphereArbitrary:
             lc_y1 = lc_y2
 
 
+
     def panel_uvs(self, indices):
 
         cylindrical_uvs = []
         spherical_uvs = []
+        panel_uvs = []
+        panel_cyl_uvs = []
+        panel_sphere_uvs = []
 
-        base = None
+        stabilizer1 = UVAngleStabilizer()
+        stabilizer2 = UVAngleStabilizer()
         for i in range(len(indices)):
             v = self.accum.verts()[indices[i]]
 
-            theta = atan2(v[1], v[0])
-            if base is None:
-                base = theta
-            else:
-                adj = floor( 0.5 + (base-theta)/(2*pi))
-                theta = theta + 2*pi*adj
+            y = v[1]
+            x = v[0]
+            z = v[2]
+            theta = stabilizer1.stabilize(atan2(y, x))
+            phi = acos(z /v.magnitude)
 
-            phi = acos(v[2]/v.magnitude)
-            phi2 = 1- phi/(pi)
+            cylindrical_uvs .append( [ theta/pi, (z +1)/2])
+            spherical_uvs.append( [ theta/pi, 1-phi/pi])
 
-            cylindrical_uvs .append( [ theta/pi, (v[2]+1)/2])
-            spherical_uvs.append( [ theta/pi, phi2])
+            y2 = self.panel_context['axis'][0].dot(v)
+            z2 = self.panel_context['axis'][1].dot(v)
+            x2 = self.panel_context['axis'][2].dot(v)
 
-        #print (cylindrical_uvs)
-        return {
+            theta2 = stabilizer2.stabilize(atan2(y2, x2))
+            phi2 = acos_(z2/v.magnitude)
+
+            if self.panel_context is not None:
+                panel_uvs.append( [ y2/2 + 0.5, z2/2 +0.5 ] )
+                panel_cyl_uvs.append( [ theta2/pi +0.5, z2/2+0.5 ] )
+                panel_sphere_uvs.append( [ theta2/pi +0.5, 1-phi2/pi ] )
+
+        rval = {
             "cylindrical" : cylindrical_uvs,
             "spherical" : spherical_uvs
         }
+
+        if self.panel_context is not None:
+            rval['panel'] = panel_uvs
+            rval['panel_cyl'] = panel_cyl_uvs
+            rval['panel_sphere'] = panel_sphere_uvs
+
+        return rval
 
 
     def inset_panel(self, va, vb, vc, va_2, vb_2, vc_2, u_res, material_index):
 
         lca_bc = LesserCircleArc(vb.cross(vc), vb_2, vc_2)
         normal_interp = GreatCircleArc(va.cross(vb), va.cross(vc))
+
+        x_axis = vc-vb
+        y_axis = (va_2-lca_bc.interpolate(0.5))
+        self.panel_context = {
+            "axis": invent_coordinate_system(x_axis, y_axis)
+        }
+
+        #print(self.panel_context)
 
         ring1 = [ self.accum.idxFor(va_2)]
         for m in range(1, u_res+1):
@@ -492,6 +531,9 @@ class TetrahedralSphereArbitrary:
             self.bridge_edges(material_index, ring1, ring2, self.panel_uvs)
 
             ring1 = ring2
+
+        self.panel_context = None
+
 
     def build_face(self, u_res, va, vb, vc, border_res, border_dz, material_index, stripe_aspect):
 
@@ -607,6 +649,9 @@ class TetrahedralSphereArbitrary:
 
         mesh.uv_textures.new("cylindrical")
         mesh.uv_textures.new("spherical")
+        mesh.uv_textures.new("panel")
+        mesh.uv_textures.new("panel_cyl")
+        mesh.uv_textures.new("panel_sphere")
 
         bm = bmesh.new()
         bm.from_mesh(mesh)
