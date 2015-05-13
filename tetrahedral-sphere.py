@@ -346,6 +346,23 @@ class TetrahedralSphereArbitrary:
 
         return verts
 
+    def grid_interpolator_transpose(self, u_res, v_res, v1, gca_12, v2, gca_23, v3, gca_43, v4, gca_14):
+        verts = [ [] for v in range(0, v_res+1)]
+
+        for u in range(0, u_res+1):
+            v12 = gca_12.interpolate(u/u_res)
+            v43 = gca_43.interpolate(u/u_res)
+            if u==0:
+                gc = gca_14
+            elif u==u_res:
+                gc = gca_23
+            else:
+                gc = GreatCircleArc(v12, v43)
+            for v in range(0, v_res+1):
+                verts[v].append(gc.interpolate(v/v_res))
+
+        return verts
+
 
     def diamond_corner(self, va, vb, vc, border_res, border_dz, material_index):
         """
@@ -406,6 +423,10 @@ class TetrahedralSphereArbitrary:
         verts = self.grid_interpolator(border_res, arc_res, vb_2, GreatCircleArc(vb_2, v1), v1, gca_12, v2,
                                GreatCircleArc(vc_2, v2), vc_2, lc_y1 )
 
+        verts = self.grid_interpolator_transpose(arc_res, border_res, v1, gca_12, v2,
+                                                 GreatCircleArc(v2, vc_2), vc_2, lc_y1 ,
+                                                 vb_2, GreatCircleArc(v1, vb_2))
+
         indices = [  [ self.accum.idxFor(v) for v in row ] for row in verts]
 
         ascension = asin(border_dz)
@@ -416,7 +437,7 @@ class TetrahedralSphereArbitrary:
             for u in range(len(indices[v])-1):
                 uv_maps = {
                     "default":
-                        [ [uv[0]/border_res, uv[1] * v_scale] for uv in self.uv_unit_square(u,v)]
+                        [ [ uv[0]* v_scale, uv[1] /border_res] for uv in self.uv_unit_square(u,v)]
                 }
                 self.add_face_i( material_index, [indices[v][u], indices[v][u+1], indices[v+1][u+1], indices[v+1][u]], uv_maps )
 
