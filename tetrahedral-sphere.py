@@ -105,6 +105,7 @@ class GreatCircleArc:
     def inset(self, erosion):
         return GreatCircleArc.Inset(self, erosion)
 
+
 class LesserCircle:
     """
     this defines the subset of the sphere whose points satisfy v.dot(normal) == offset
@@ -158,6 +159,7 @@ class LesserCircle:
         y = (a*h - e*d) / det
 
         return [ x, y ]
+
 
 class LesserCircleArc:
     def __init__(self, normal, p1, p2):
@@ -269,6 +271,7 @@ class TetrahedralSphereArbitrary:
                     normal_beta = (vd-va).cross(vb-va) .normalized()
                     convexity_greek = normal_alpha.cross(normal_beta)
 
+                    # this decision works good for spheres.  Anything else, it could be a bad idea
                     if (convexity_greek > convexity_espanol):
                         advance_ring1=True
                     else:
