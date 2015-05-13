@@ -590,7 +590,7 @@ class TetrahedralSphereArbitrary:
         mesh.validate(False)
 
         #mesh.show_normal_face = True
-        while len(mesh.materials) < 5:
+        while len(mesh.materials) < 6:
             mesh.materials.append(None)
 
         for i in range(len(tsa.material_indices)):
