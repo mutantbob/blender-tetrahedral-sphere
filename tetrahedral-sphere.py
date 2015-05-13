@@ -189,10 +189,11 @@ def closer_point(v_master, alternatives):
 
 class TetrahedralSphereArbitrary:
 
-    faces = []
-    material_indices = []
-    uv_maps = []
-    accum = VertexAccumulator()
+    def __init__(self):
+        self.faces = []
+        self.material_indices = []
+        self.uv_maps = []
+        self.accum = VertexAccumulator()
 
     @classmethod
     def triangle_interp(cls, va, f1, vb, f2, vc):
